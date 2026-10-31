@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damped Oscillator: Numerical Integration</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/vendor/plotly.min.js"></script>
+  <script>window.Plotly || document.write('<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"><\/script>')</script>
+</head>
+<body>
+  <aside class="sidebar">
+    <h2>Mass-spring system</h2>
+    <p class="hint equation">m ẍ + b ẋ + k x = F(t)</p>
+    <label class="field"><span>Mass m (kg)</span>
+      <input type="number" id="mass" data-persist min="0" step="any" value="5.58"></label>
+    <label class="field"><span>Spring constant k (N/m)</span>
+      <input type="number" id="spring" data-persist min="0" step="any" value="1.81"></label>
+    <label class="field"><span>Damping coefficient b (kg/s)</span>
+      <input type="number" id="damping" data-persist min="0" step="any" value="0.1"></label>
+    <div class="presets" id="damping-presets" aria-label="Damping presets"></div>
+
+    <div class="row compact">
+      <label class="field"><span>x₀ (m)</span><input type="number" id="x0" data-persist step="any" value="0"></label>
+      <label class="field"><span>v₀ (m/s)</span><input type="number" id="v0" data-persist step="any" value="-1"></label>
+    </div>
+
+    <div class="summary" id="system-summary"></div>
+    <button class="secondary small" id="reset-all">Reset to notebook values</button>
+  </aside>
+
+  <main>
+    <header>
+      <h1>Damped Oscillator: Numerical Integration</h1>
+      <p class="hint">Compares numerical integration methods for a damped, optionally driven, mass-spring system against
+        its exact solution, which is known for every damping regime and for the pulse and sinusoidal forces used here.</p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="compare" role="tab">Method comparison</button>
+      <button class="tab" data-tab="convergence" role="tab">Convergence</button>
+      <button class="tab" data-tab="resonance" role="tab">Resonance</button>
+      <button class="tab" data-tab="methods" role="tab">Methods</button>
+      <button class="tab" data-tab="review" role="tab">Notebook review</button>
+    </nav>
+
+    <!-- Shared run settings -->
+    <section class="settings" id="run-settings">
+      <div class="row">
+        <label class="field"><span>Total time T (s)</span>
+          <input type="number" id="total-time" data-persist min="0" step="any" value="150"></label>
+        <label class="field" id="step-field"><span>Step size h (s)</span>
+          <input type="number" id="step" data-persist min="0" step="any" value="0.1"></label>
+        <label class="field"><span>Driving force</span>
+          <select id="force-kind" data-persist>
+            <option value="none">None (free oscillation)</option>
+            <option value="pulse">Rectangular pulse</option>
+            <option value="sinusoidal">Sinusoidal F₀ cos(ωt + φ)</option>
+          </select></label>
+        <label class="field force-param pulse sinusoidal"><span>F₀ (N)</span>
+          <input type="number" id="force-amplitude" data-persist step="any" value="2.5"></label>
+        <label class="field force-param pulse"><span>Start (s)</span>
+          <input type="number" id="pulse-start" data-persist min="0" step="any" value="20"></label>
+        <label class="field force-param pulse"><span>Duration (s)</span>
+          <input type="number" id="pulse-duration" data-persist min="0" step="any" value="3"></label>
+        <label class="field force-param sinusoidal"><span>ω (rad/s) <button class="link" id="omega-natural" type="button">= ω₀</button></span>
+          <input type="number" id="force-omega" data-persist min="0" step="any" value="0.9"></label>
+        <label class="field force-param sinusoidal"><span>φ (rad)</span>
+          <input type="number" id="force-phase" data-persist step="any" value="0"></label>
+      </div>
+      <div class="field">
+        <span>Methods</span>
+        <div class="chips" id="method-chips"></div>
+      </div>
+      <label class="field inline"><span>RK45 relative tolerance</span>
+        <select id="rtol" data-persist>
+          <option value="0.001" selected>10⁻³ (SciPy default, as in the notebook)</option>
+          <option value="1e-6">10⁻⁶</option>
+          <option value="1e-9">10⁻⁹</option>
+        </select></label>
+    </section>
+
+    <!-- Method comparison -->
+    <section class="panel active" id="panel-compare">
+      <div class="actions">
+        <span class="status" id="compare-status"></span>
+      </div>
+      <div id="compare-results" class="hidden">
+        <div class="row align-end">
+          <label class="field inline"><span>Rank by</span>
+            <select id="rank-metric" data-persist>
+              <option value="rmse">RMSE</option><option value="mae">MAE</option>
+              <option value="mse">MSE</option><option value="max">Max |error|</option>
+            </select></label>
+        </div>
+        <div class="table-wrap">
+          <table id="error-table">
+            <thead>
+              <tr><th>#</th><th>Method</th><th>Order</th><th>MAE (m)</th><th>MSE (m²)</th><th>RMSE (m)</th>
+                <th>Max |error| (m)</th><th>Energy error at T</th><th>Run time (ms)</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="compare-summary"></p>
+        <div class="plot" id="plot-position"></div>
+        <label class="field inline"><input type="checkbox" id="log-error" data-persist checked><span>Show |error| on a log scale</span></label>
+        <div class="plot" id="plot-error"></div>
+        <div class="grid-2">
+          <div class="plot" id="plot-energy"></div>
+          <div class="plot" id="plot-phase"></div>
+        </div>
+        <div class="actions"><button class="secondary" id="download-csv">Download plotted trajectories (CSV)</button></div>
+      </div>
+    </section>
+
+    <!-- Convergence -->
+    <section class="panel" id="panel-convergence">
+      <h2>Error against step size</h2>
+      <p>Runs every selected method over a range of step sizes, using the system, force and total time above. The slope
+        of log(error) against log(h) is the observed order of accuracy p (error ∝ h<sup>p</sup>).</p>
+      <div class="row">
+        <label class="field"><span>Smallest h (s)</span><input type="number" id="h-min" data-persist min="0" step="any" value="0.005"></label>
+        <label class="field"><span>Largest h (s)</span><input type="number" id="h-max" data-persist min="0" step="any" value="0.2"></label>
+        <label class="field"><span>Number of step sizes</span><input type="number" id="h-points" data-persist min="3" max="30" value="10"></label>
+        <label class="field"><span>Error measure</span>
+          <select id="conv-metric" data-persist>
+            <option value="max">Max |error| / max |x|</option>
+            <option value="rmse">RMSE / max |x|</option>
+            <option value="mae">MAE / max |x|</option>
+          </select></label>
+      </div>
+      <div class="actions">
+        <button class="primary" id="run-convergence">Run convergence study</button>
+        <span class="status" id="convergence-status"></span>
+      </div>
+      <div class="notice hidden" id="convergence-stale">Settings changed since the last run. Press <b>Run convergence study</b> to update.</div>
+      <div id="convergence-results" class="hidden">
+        <div class="plot tall" id="plot-convergence"></div>
+        <div class="table-wrap narrow">
+          <table id="order-table">
+            <thead><tr><th>Method</th><th>Expected order</th><th>Observed order</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Errors above 1 (the method has blown up) and below 10⁻¹² (round-off) are left out of the fit.
+          RK45 is adaptive: its error is set by its tolerance, so it does not change with h.
+          With a pulse force, fixed-step methods use the force averaged over each step, so each step gets the right impulse.
+          Step sizes are adjusted slightly so the pulse start and end fall on grid points; if a jump fell between grid
+          points, RK4 would drop to second order.</p>
+      </div>
+    </section>
+
+    <!-- Resonance -->
+    <section class="panel" id="panel-resonance">
+      <h2>Resonance curves</h2>
+      <p>Steady-state amplitude of the response to F₀ cos(ωt) for several damping coefficients, using m and k from the
+        sidebar. The exact amplitude is A(ω) = F₀ / √((k − mω²)² + (bω)²).</p>
+      <div class="row">
+        <label class="field wide"><span>Damping coefficients b (kg/s, comma-separated)</span>
+          <input type="text" id="res-dampings" data-persist value="0.1, 0.5, 2.0"></label>
+        <label class="field"><span>F₀ (N)</span><input type="number" id="res-amplitude" data-persist step="any" value="2.5"></label>
+        <label class="field"><span>ω from (× ω₀)</span><input type="number" id="res-min" data-persist min="0" step="any" value="0.1"></label>
+        <label class="field"><span>ω to (× ω₀)</span><input type="number" id="res-max" data-persist min="0" step="any" value="2"></label>
+        <label class="field"><span>Number of frequencies</span><input type="number" id="res-points" data-persist min="5" max="400" value="100"></label>
+      </div>
+      <div class="row align-end">
+        <label class="field inline"><input type="checkbox" id="res-numeric" data-persist checked><span>Also measure amplitudes with RK4</span></label>
+        <label class="field"><span>Run time (s)</span><input type="number" id="res-time" data-persist min="0" step="any" value="300"></label>
+        <label class="field"><span>Step (s)</span><input type="number" id="res-step" data-persist min="0" step="any" value="0.05"></label>
+      </div>
+      <p class="hint">RK4 runs start from x₀, v₀ in the sidebar; the amplitude is the largest |x| over the last quarter of the run.
+        It only matches the steady state if transients have decayed, i.e. if the run is several decay times 2m/b long.</p>
+      <div class="actions">
+        <button class="primary" id="run-resonance">Compute resonance curves</button>
+        <span class="status" id="resonance-status"></span>
+      </div>
+      <div class="notice hidden" id="resonance-stale">Settings changed since the last run. Press <b>Compute resonance curves</b> to update.</div>
+      <div id="resonance-results" class="hidden">
+        <div class="plot tall" id="plot-resonance"></div>
+        <div class="table-wrap">
+          <table id="resonance-table">
+            <thead><tr><th>b (kg/s)</th><th>Regime</th><th>Q = mω₀/b</th><th>Q from peak width</th><th>Peak ω (rad/s)</th>
+              <th>Peak amplitude (m)</th><th>Decay time (s)</th><th>RK4 run settled?</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">“Q from peak width” is ω<sub>peak</sub>/Δω, with Δω the full width of the energy (A²) peak at half height. It
+          agrees with mω₀/b only for light damping (large Q).</p>
+        <div class="grid-2">
+          <div class="plot" id="plot-phase-lag"></div>
+          <div class="plot" id="plot-q"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Methods -->
+    <section class="panel prose" id="panel-methods">
+      <h2>Equation of motion</h2>
+      <p>m ẍ + b ẋ + k x = F(t), written as the first-order system ẋ = v, v̇ = a(x, v, t) = (F(t) − b v − k x)/m.
+        Natural frequency ω₀ = √(k/m), decay rate γ = b/2m, critical damping b<sub>cr</sub> = 2√(km), damping ratio ζ = b/b<sub>cr</sub>,
+        quality factor Q = mω₀/b = 1/(2ζ).</p>
+      <h2>Exact solution</h2>
+      <p>The free response is written in one form for every regime:</p>
+      <p class="equation">x(t) = e<sup>−γt</sup> [x₀ C(t) + (v₀ + γx₀) S(t)]</p>
+      <ul>
+        <li>underdamped (ζ &lt; 1): C = cos ω<sub>d</sub>t, S = sin(ω<sub>d</sub>t)/ω<sub>d</sub>, with ω<sub>d</sub> = √(ω₀² − γ²)</li>
+        <li>critically damped (ζ = 1): C = 1, S = t</li>
+        <li>overdamped (ζ &gt; 1): C = cosh rt, S = sinh(rt)/r, with r = √(γ² − ω₀²)</li>
+      </ul>
+      <p>For a <b>rectangular pulse</b> of force F, x − F/k obeys the free equation while the force acts, so the solution is
+        joined from three free solutions. For a <b>sinusoidal force</b> the solution is the steady state
+        A cos(ωt + φ − δ), with tan δ = bω/(k − mω²), plus the free response that matches the initial conditions.
+        Because the exact solution is available in all these cases, every error shown in this app is a true error.</p>
+      <h2>Integration methods</h2>
+      <div class="table-wrap">
+        <table id="methods-table">
+          <thead><tr><th>Method</th><th>Global order</th><th>Description</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint">Global order p means the error at a fixed time falls as h<sup>p</sup>. A method that is 2nd order
+        locally (one step) is 1st order globally, which is why the notebook's “O(h³)” for Improved Euler is not what you observe.</p>
+      <h2>Energy</h2>
+      <p>The mechanical energy E = ½mv² + ½kx² decays because of damping (and changes when a force acts). The energy plot
+        compares each method's energy with the exact energy. Explicit Euler always gains energy for an undamped system;
+        Euler-Cromer and Verlet are symplectic, so for b = 0 their energy oscillates around the true value without drifting.</p>
+    </section>
+
+    <!-- Notebook review -->
+    <section class="panel prose" id="panel-review">
+      <h2>Review of the original notebook</h2>
+      <p>The original report is kept in <code>Numerical_integration.ipynb</code>. Its overall approach (compare several
+        integrators against an analytic solution, then study driven motion and resonance) is sound, but a few problems
+        affect its conclusions. This app fixes them.</p>
+      <h3>Problems that change the results</h3>
+      <ol>
+        <li><b>The Runge-Kutta results are compared at the wrong times.</b> <code>RungeKutta</code> integrates to
+          nsteps·h and reports nsteps points with <code>linspace</code>, so its spacing is nsteps·h/(nsteps−1), not h. The
+          analytic solution is evaluated on <code>arange(0, T, h)</code>. At h = 0.1 s, T = 300 s the times drift apart by up to 0.1 s,
+          which doubles the reported RK error (MAE 0.0124 m instead of 0.0058 m for b = 0.1). With aligned times RK beats
+          Euler-Cromer there too, so “Euler-Cromer is best for b = 0.1” is an artefact.</li>
+        <li><b>“Runge-Kutta” is SciPy's adaptive RK45 with default tolerances (rtol = 10⁻³)</b>, not the fixed-step RK4 described in the text.
+          Its step size does not depend on h, so its error is the same for every h (about 1.06 × 10⁻³ m MAE for b = 0.5 kg/s, T = 50 s at
+          h = 0.1, 0.05 and 0.01 s). The step-size study therefore says nothing about RK accuracy. This app has a true RK4 and
+          keeps RK45 separately with a tolerance setting.</li>
+        <li><b>The Verlet method is only first order.</b> It uses v[i], computed as (x[i] − x[i−2])/2h, which is the
+          velocity one step back, in the damping force. Its error halves (rather than quarters) when h halves, which is why it
+          “gets worse as damping increases”. Velocity Verlet with the damping force treated implicitly is second order.</li>
+        <li><b>Analytic curves on the wrong grid in the critical-damping comparisons.</b> In
+          <code>plot_simulation_results_with_analytical</code> and <code>calculate_mae_for_damping_types</code> the analytic
+          solution uses <code>linspace(0, T, nsteps)</code> (spacing T/(nsteps−1)), while the numerical methods use
+          spacing h.</li>
+        <li><b>Critical damping is detected with <code>b == b_cr</code></b> on floating-point numbers, which only works because the
+          same expression is used twice. A tolerance (or one formula valid for all regimes, as here) is more robust.</li>
+        <li><b>The driven-motion plots compare with the unforced solution</b>, labelled “Analytical Solution”. The forced
+          problem has an exact solution, so the numerical error of the driven runs can be measured directly.</li>
+        <li><b>The resonance curve uses the maximum |x| over the whole run</b>, including the start-up transient and the
+          initial velocity. For b = 0.1 kg/s the 150 s run lasts only 1.3 decay times (2m/b = 112 s), so the transient has not died out.
+          The steady-state amplitude should be taken after the transient has decayed (or computed exactly).</li>
+      </ol>
+      <h3>Errors in the text</h3>
+      <ul>
+        <li>Improved Euler is said to have error O(h³). Only the position update gets the extra term, so the method is first order overall.</li>
+        <li>The Verlet formula reads x<sub>i+1</sub> = 2x<sub>i</sub> <b>+</b> x<sub>i−1</sub> + h²a<sub>i</sub>; it should be <b>−</b> x<sub>i−1</sub>.</li>
+        <li>The Euler-Cromer formula is written v<sub>i+1</sub> = v<sub>i</sub> + (hk/m)x<sub>i</sub>: the sign is wrong and the damping
+          term is missing (the code is correct).</li>
+        <li>The section heading says “Runge-Kutta 45” but describes RK4; the code uses RK45.</li>
+        <li>MSE is quoted in m; its unit is m².</li>
+        <li>The sinusoidal force is written F₀ sin(ωt + φ) in the introduction and F₀ cos(ωt + φ) later (the code uses cos).
+          The sudden force is introduced as a Dirac delta but simulated as a 3 s rectangular pulse.</li>
+      </ul>
+      <h3>Code quality</h3>
+      <ul>
+        <li>The integrators read m and k from global variables; the force phase φ is also a global inside <code>sinusoidal_force</code>.</li>
+        <li>Number of steps is computed in three different ways (<code>ceil(T/h)</code>, <code>int(T/h)</code> and
+          <code>arange</code>), which can disagree by one point for some T and h.</li>
+        <li>The same plotting and error code is repeated in several cells, and <code>run_simulation_best</code> is called three times per step size where once would do.</li>
+        <li>No tests. This package has tests that check the exact solutions and the order of every method.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
