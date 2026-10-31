@@ -230,9 +230,11 @@
     <!-- Notebook review -->
     <section class="panel prose" id="panel-review">
       <h2>Review of the original notebook</h2>
-      <p>The original report is kept in <code>Numerical_integration.ipynb</code>. Its overall approach (compare several
-        integrators against an analytic solution, then study driven motion and resonance) is sound, but a few problems
-        affect its conclusions. This app fixes them.</p>
+      <p>The original version of <code>Numerical_integration.ipynb</code> had a sound overall approach (compare several
+        integrators against an analytic solution, then study driven motion and resonance), but a few problems
+        affected its conclusions. They are listed below. Both this app and the current notebook fix them; the notebook
+        starts with a revision note and its observations and conclusion were rewritten for the corrected results.
+        One more bug was found while correcting it: the analytic energy formula had the wrong sign on one velocity term.</p>
       <h3>Problems that change the results</h3>
       <ol>
         <li><b>The Runge-Kutta results are compared at the wrong times.</b> <code>RungeKutta</code> integrates to

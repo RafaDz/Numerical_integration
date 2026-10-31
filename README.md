@@ -7,8 +7,9 @@ Compares numerical integration methods for a damped, optionally driven mass-spri
 against its **exact** solution, with an interactive web interface for changing the system, the driving force,
 the step size and the methods.
 
-The original project report is kept in `Numerical_integration.ipynb`. The **Notebook review** tab of the app
-lists the problems found in it and how this version fixes them (summary below).
+The project report is `Numerical_integration.ipynb`. It has been corrected for the problems listed in the
+app's **Notebook review** tab (see the revision note at the top of the notebook); the package and app below
+were written with the same fixes (summary at the end).
 
 ## Quick start
 
@@ -93,7 +94,7 @@ tests/            pytest tests: exact solutions satisfy the equation, observed o
 
 Run the tests with `pytest`.
 
-## Changes from the notebook
+## Changes from the original notebook
 
 - **Exact reference for every case.** One formula covers under-, critically and overdamped motion (no `b == b_cr`
   float comparison), and exact solutions for the pulse and sinusoidal forces mean the driven runs have real errors
